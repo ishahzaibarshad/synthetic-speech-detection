@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthetic Speech Detection System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='javascript.js') }}"></script>
+    <link rel="icon" href="/static/img/logo.png">
+    </head>
+<body>
+    <header class="header">
+        <nav class="navbar container ">
+            <img src="/static/img/logo.png" alt="">
+            <div class="logo ">Synthetic Speech Detection</div>
+            </nav>
+    </header>
+
+    <div id="loader-overlay">
+        <div class="loader"></div>
+    </div>
+
+    <main class="main-content container">
+        <section id="upload-section" class="card">
+            <h1>Upload Your Voice File</h1>
+            <p class="subtitle">Upload an audio file (e.g., .wav, .mp3) to detect <br> if it's fake or real speech.</p>
+            <form id="uploadForm" method="POST" action="/upload-audio" enctype="multipart/form-data">
+                <div class="file-input-wrapper">
+                    <input type="file" id="audioInput" name="audio" accept="audio/*" required>
+                    <label for="audioInput" class="file-input-label">Choose File</label>
+                    <span id="fileName" class="file-name">No file chosen</span>
+                </div>
+                <button type="submit" class="btn btn-primary">Analyze Speech</button>
+            </form>
+        </section>
+    
+        {% if res %}
+    <section class="response-section card">
+        <h2>Detection Result</h2>
+        {#
+           Check the content of 'res' to determine the class.
+           Adjust the conditions ('Real' in res, 'Fake' in res)
+           based on the actual values 'res' can hold.
+        #}
+        <div id="responseMessage"
+             class="response-output
+                    {% if 'real' in res %}success{% elif 'fake' in res %}error{% endif %}"
+             aria-live="polite">
+            {{ res|safe }}
+        </div>
+    </section>
+{% endif %}
+    </main>
+        
+    </main>
+
+    <footer id="contact" class="footer">
+        <div class="container">
+            <p>&copy; 2025 Synthetic Speech Detection. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+    const uploadForm = document.getElementById('uploadForm');
+    const loaderOverlay = document.getElementById('loader-overlay');
+    const audioInput = document.getElementById('audioInput');
+    const fileNameDisplay = document.getElementById('fileName');
+    const responseMessage = document.getElementById('responseMessage'); // Get the response element
+
+    // --- File Name Display ---
+    if (audioInput && fileNameDisplay) {
+        audioInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                fileNameDisplay.textContent = this.files[0].name;
+            } else {
+                fileNameDisplay.textContent = 'No file chosen';
+            }
+        });
+    }
+
+    // --- Loader Logic ---
+    if (uploadForm && loaderOverlay) {
+        uploadForm.addEventListener('submit', function(event) {
+            // Prevent default form submission if handling via AJAX
+            // event.preventDefault(); // Uncomment this if you handle submission with fetch/XHR
+
+            // Show loader
+            loaderOverlay.style.display = 'flex'; // Use flex to show
+
+            // --- Mocking Response Handling (Replace with your actual AJAX call) ---
+            // Simulate network request
+            setTimeout(() => {
+                // Hide loader
+                loaderOverlay.style.display = 'none';
+
+                // --- Update response message (EXAMPLE) ---
+                // You'll need to replace this part with your actual logic
+                // to update the response based on the server's reply.
+                const isSynthetic = Math.random() > 0.5; // Example: Random result
+                if (isSynthetic) {
+                    responseMessage.textContent = 'Result: Synthetic Speech Detected';
+                    responseMessage.className = 'response-output error'; // Add error class
+                } else {
+                    responseMessage.textContent = 'Result: Real Speech Detected';
+                    responseMessage.className = 'response-output success'; // Add success class
+                }
+                // --------------------------------------------
+
+            }, 2000); // Simulate a 2-second delay
+             // Make sure the default submission is prevented if you are handling it here
+             // event.preventDefault(); // Or handle form submission via JS entirely
+        });
+    }
+});
+    </script>
+
+</body>
+</html>
