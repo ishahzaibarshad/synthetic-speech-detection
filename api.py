@@ -1,79 +1,106 @@
-from flask import Flask, request, jsonify, render_template
-from werkzeug.utils import secure_filename
-from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
-import torch
-import librosa
+from functools import lru_cache
+import logging
 import os
+from pathlib import Path
+import tempfile
+
+from flask import Flask, current_app, render_template, request
+from werkzeug.datastructures import FileStorage
+
+MODEL_ID = "idolstranger/deepfake_audio_detection"
+MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+MAX_AUDIO_SECONDS = 60
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".opus"}
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
 
-# Load model and feature extractor
-model = AutoModelForAudioClassification.from_pretrained("idolstranger/deepfake_audio_detection")
-feature_extractor = AutoFeatureExtractor.from_pretrained("idolstranger/deepfake_audio_detection")
+class InvalidAudioError(ValueError):
+    """Raised when an uploaded file cannot be decoded as supported audio."""
 
-def predict_audio_class(audio_path):
-    # Load audio
-    speech, sr = librosa.load(audio_path, sr=16000)
 
-    # Preprocess
-    inputs = feature_extractor(
+@lru_cache(maxsize=1)
+def load_model():
+    """Load the public Hugging Face model only when the first prediction is requested."""
+    import torch
+    from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+
+    model = AutoModelForAudioClassification.from_pretrained(MODEL_ID)
+    model.eval()
+    extractor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
+    return model, extractor, torch
+
+
+def predict_audio_class(audio_path: str) -> str:
+    """Run CPU inference on at most five seconds from a bounded audio decode."""
+    import librosa
+
+    model, extractor, torch = load_model()
+    try:
+        speech, _ = librosa.load(audio_path, sr=16_000, duration=MAX_AUDIO_SECONDS)
+    except Exception as exc:
+        raise InvalidAudioError("The uploaded file could not be decoded.") from exc
+    if speech.size == 0:
+        raise InvalidAudioError("The uploaded audio is empty.")
+
+    inputs = extractor(
         speech,
-        sampling_rate=sr,
+        sampling_rate=16_000,
         return_tensors="pt",
         padding="max_length",
-        max_length=16000 * 5,  # 5 seconds
-        truncation=True
+        max_length=16_000 * 5,
+        truncation=True,
     )
-
-    # Inference
-    with torch.no_grad():
+    with torch.inference_mode():
         logits = model(**inputs).logits
 
-    # Get prediction
-    id2label = model.config.id2label
-    predicted_class = logits.argmax().item()
-    return id2label[predicted_class]
+    class_id = int(logits.argmax(dim=-1).item())
+    labels = model.config.id2label
+    return str(labels.get(class_id, class_id))
 
-# Route to render the HTML page
-@app.route('/')
+
+def _render(message: str, status: int):
+    return render_template("index.html", res=message), status
+
+
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return _render("Audio file exceeds the 16 MB upload limit.", 413)
+
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-# Route to handle audio file upload and prediction
-@app.route('/upload-audio', methods=['POST'])
+
+@app.route("/upload-audio", methods=["POST"])
 def upload_audio():
-    if 'audio' not in request.files:
-        return render_template('index.html', res="No audio file uploaded")
-    
-    audio = request.files['audio']
-    
-    if audio.filename == '':
-        return render_template('index.html', res="No selected file")
-    
-    if audio and audio.mimetype.startswith("audio/"):
-        filename = secure_filename(audio.filename)
-        save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio.save(save_path)
-        
-        try:
-            prediction = predict_audio_class(save_path)
-            result = f"Prediction: {prediction}"
-        except Exception as e:
-            result = f"Error processing audio: {str(e)}"
-        finally:
-            if os.path.exists(save_path):
-                os.remove(save_path)
-        
-        return render_template('index.html', res=result)
-    else:
-        return render_template('index.html', res="Invalid file format - audio files only")
+    audio: FileStorage | None = request.files.get("audio")
+    if audio is None or not audio.filename:
+        return _render("Choose an audio file to upload.", 400)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    suffix = Path(audio.filename).suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS or not (audio.mimetype or "").lower().startswith("audio/"):
+        return _render("Upload a supported audio file.", 400)
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="speech-detection-", suffix=suffix, delete=False) as temp_file:
+            temp_path = temp_file.name
+        audio.save(temp_path)
+        try:
+            prediction = predict_audio_class(temp_path)
+        except InvalidAudioError:
+            return _render("The uploaded audio could not be decoded. Try a valid audio file.", 422)
+        except Exception:
+            current_app.logger.exception("Audio inference failed")
+            return _render("The classifier is unavailable. Check the local model setup and try again.", 503)
+        return _render(f"Prediction: {prediction}", 200)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=False)
