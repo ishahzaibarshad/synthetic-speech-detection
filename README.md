@@ -1,36 +1,33 @@
-# 🎓 Final Year Project – Synthetic Speech Detection System
+# Synthetic Speech Detection
 
-🔍 **Detecting AI-Generated Voices Using Machine Learning & AI**
+A Flask application for uploading an audio file and classifying it with a pretrained Hugging Face audio-classification model.
 
-This project is aimed at developing a **Synthetic Speech Detection System** capable of identifying and classifying whether an audio sample is real human speech or AI-generated (synthetic). The increasing rise of deepfakes and voice spoofing has become a major concern, especially in voice-based authentication systems. This system addresses those challenges and aims to provide solutions for fraud detection and security enhancement.
+## Inference flow
 
-## 💡 **Key Features & Highlights:**
-- 🎙️ **Collected and Preprocessed Datasets**: Both real and synthetic audio datasets were gathered and preprocessed for model training.
-- 📊 **Audio Feature Extraction**: Extracted key audio features like **MFCC** (Mel-Frequency Cepstral Coefficients) and **Spectrograms** using the **Librosa** library.
-- 🧠 **Trained Models**: Leveraged **Scikit-learn** and **TensorFlow** to train machine learning models for speech classification.
-- 🛡️ **Security-Focused Design**: Designed for applications like security and fraud detection in voice authentication systems.
-- 🎯 **High Accuracy**: The system achieved impressive accuracy in distinguishing synthetic speech from real speech.
+1. Accept an audio upload through `POST /upload-audio` (up to 16 MB).
+2. Load and resample the audio to 16 kHz with librosa.
+3. Use the model’s feature extractor to prepare a five-second input window.
+4. Run inference with PyTorch and display the predicted class label.
 
-## 🧰 **Tools & Technologies Used:**
-- **Python**: Programming language
-- **TensorFlow**: For training deep learning models
-- **Scikit-learn**: For machine learning model training
-- **Librosa**: For feature extraction and signal processing
-- **Jupyter Notebooks**: For analysis and experimentation
-- **NumPy**: For numerical computations
-- **Pandas**: For data manipulation and analysis
+The inference implementation in `api.py` loads `idolstranger/deepfake_audio_detection`. This repository does not include a training pipeline or a reported evaluation metric, so no accuracy claim is made here. `app.py` is a simpler upload-validation app and does not run model inference.
 
-## 🚀 **Project Overview**:
-This Synthetic Speech Detection System is designed to identify whether a given audio sample comes from a **real human** or **AI-generated source**. The project focuses on the following:
+## Stack
 
-- **Data Collection**: Datasets containing both real human voices and synthetic AI-generated voices are collected and preprocessed.
-- **Feature Extraction**: Key audio features are extracted using **MFCC** and **Spectrograms** to enable machine learning models to classify audio samples.
-- **Model Training**: Machine learning models are trained using **TensorFlow** and **Scikit-learn**, with a focus on achieving high accuracy in synthetic speech detection.
-- **Deployment**: The system can be deployed in voice authentication systems to prevent fraud and improve security.
+Python · Flask · Hugging Face Transformers · PyTorch · librosa
 
-## 💻 **Installation & Setup**:
+## Run locally
 
-### 1. **Clone the Repository:**
 ```bash
-git clone https://github.com/your-username/synthetic-speech-detection.git
-cd synthetic-speech-detection
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python api.py
+```
+
+Open `http://127.0.0.1:5000`. Use only audio you have permission to process. Uploaded files are removed by the application after prediction; configure production storage, access controls, and retention deliberately before deployment.
+
+## Repository note
+
+The repository currently includes a `.venv` directory in Git. A virtual environment should normally be excluded with `.gitignore` and recreated from `requirements.txt`.
+
